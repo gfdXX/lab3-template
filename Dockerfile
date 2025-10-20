@@ -12,9 +12,13 @@ COPY services/ ./services/
 # Copy pytest configuration
 COPY pytest.ini ./
 
-# Expose all ports (will be overridden in docker-compose)
-EXPOSE 8050 8060 8070 8080
+# Create startup script
+COPY start.sh ./
+RUN chmod +x start.sh
 
-# Default command (will be overridden in docker-compose)
-CMD ["uvicorn", "services.gateway_service.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Expose port
+EXPOSE $PORT
+
+# Use startup script
+CMD ["./start.sh"]
 

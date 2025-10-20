@@ -19,9 +19,9 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn services.gateway_service.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: SERVICE_NAME
+        value: gateway
       - key: CARS_SERVICE_URL
         value: https://car-rental-cars.onrender.com
       - key: RENTAL_SERVICE_URL
@@ -39,9 +39,9 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn services.cars_service.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: SERVICE_NAME
+        value: cars
       - key: DATABASE_URL
         fromDatabase:
           name: car-rental-db
@@ -53,9 +53,9 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn services.rental_service.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: SERVICE_NAME
+        value: rental
       - key: DATABASE_URL
         fromDatabase:
           name: car-rental-db
@@ -67,9 +67,9 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn services.payment_service.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: SERVICE_NAME
+        value: payment
       - key: DATABASE_URL
         fromDatabase:
           name: car-rental-db

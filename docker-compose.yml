@@ -28,43 +28,48 @@ services:
     container_name: cars-service
     restart: on-failure
     environment:
+      SERVICE_NAME: cars
+      PORT: 8070
       DATABASE_URL: postgresql://program:test@postgres:5432/cars
     ports:
       - "8070:8070"
     depends_on:
       - db-init
-    command: ["uvicorn", "services.cars_service.main:app", "--host", "0.0.0.0", "--port", "8070"]
 
   rental-service:
     build: .
     container_name: rental-service
     restart: on-failure
     environment:
+      SERVICE_NAME: rental
+      PORT: 8060
       DATABASE_URL: postgresql://program:test@postgres:5432/rentals
     ports:
       - "8060:8060"
     depends_on:
       - db-init
       - cars-service
-    command: ["uvicorn", "services.rental_service.main:app", "--host", "0.0.0.0", "--port", "8060"]
 
   payment-service:
     build: .
     container_name: payment-service
     restart: on-failure
     environment:
+      SERVICE_NAME: payment
+      PORT: 8050
       DATABASE_URL: postgresql://program:test@postgres:5432/payments
     ports:
       - "8050:8050"
     depends_on:
       - db-init
-    command: ["uvicorn", "services.payment_service.main:app", "--host", "0.0.0.0", "--port", "8050"]
 
   gateway-service:
     build: .
     container_name: gateway-service
     restart: on-failure
     environment:
+      SERVICE_NAME: gateway
+      PORT: 8080
       CARS_SERVICE_URL: http://cars-service:8070
       RENTAL_SERVICE_URL: http://rental-service:8060
       PAYMENT_SERVICE_URL: http://payment-service:8050
@@ -74,7 +79,6 @@ services:
       - cars-service
       - rental-service
       - payment-service
-    command: ["uvicorn", "services.gateway_service.main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 volumes:
   db-data:
