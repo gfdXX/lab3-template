@@ -12,13 +12,13 @@ COPY services/ ./services/
 # Copy pytest configuration
 COPY pytest.ini ./
 
-# Create startup script
+# Copy start script
 COPY start.sh ./
 RUN chmod +x start.sh
 
-# Expose port
-EXPOSE $PORT
+# Expose all ports (will be overridden in docker-compose)
+EXPOSE 8050 8060 8070 8080
 
-# Use startup script
-CMD ["./start.sh"]
+# Use start script to determine which service to start
+ENTRYPOINT ["./start.sh"]
 

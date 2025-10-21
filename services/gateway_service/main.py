@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Header, Query
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -110,9 +111,28 @@ class RetryQueue:
         """Retry a failed request"""
         try:
             print(f"Retrying request: {request_data}")
-            # Here we would implement the actual retry logic
-            # For now, just log the retry attempt
             time.sleep(5)  # Wait before retry
+            
+            if request_data["type"] == "cancel_rental":
+                # Retry payment cancellation
+                payment_uid = request_data["data"].get("payment_uid")
+                if payment_uid:
+                    try:
+                        response = requests.delete(
+                            f"{PAYMENT_SERVICE_URL}/api/v1/payments/{payment_uid}",
+                            timeout=3
+                        )
+                        if response.status_code == 204:
+                            print(f"Retry successful: Payment {payment_uid} cancelled")
+                        else:
+                            print(f"Retry failed: Payment service returned {response.status_code}")
+                            # Re-queue if failed
+                            self.queue.put(request_data)
+                    except Exception as e:
+                        print(f"Retry failed: {e}")
+                        # Re-queue if failed
+                        self.queue.put(request_data)
+            
             print(f"Retry completed for: {request_data}")
         except Exception as e:
             print(f"Retry failed: {e}")
@@ -417,7 +437,10 @@ async def create_rental(rental_request: RentalRequest, username: str = Depends(g
             payment_info = payment_circuit_breaker.call(_create_payment)
         except Exception as e:
             print(f"Gateway: Payment service error: {e}")
-            raise HTTPException(status_code=503, detail="Payment Service unavailable")
+            return JSONResponse(
+                status_code=503,
+                content={"message": "Payment Service unavailable"}
+            )
         
         # Step 4: Reserve car
         car_reserve_response = requests.patch(
@@ -599,7 +622,8 @@ async def cancel_rental(rental_uid: str, username: str = Depends(get_username)):
             "type": "cancel_rental",
             "data": {
                 "rental_uid": rental_uid,
-                "username": username
+                "username": username,
+                "payment_uid": payment_uid if 'payment_uid' in locals() else None
             },
             "timestamp": time.time()
         }

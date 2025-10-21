@@ -114,6 +114,8 @@ async def create_payment(payment_request: PaymentRequest, db: Session = Depends(
 @app.delete("/api/v1/payments/{payment_uid}")
 async def cancel_payment(payment_uid: UUID, db: Session = Depends(get_db)):
     """Cancel payment"""
+    from fastapi import Response
+    
     payment = db.query(Payment).filter(Payment.payment_uid == payment_uid).first()
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
@@ -124,7 +126,7 @@ async def cancel_payment(payment_uid: UUID, db: Session = Depends(get_db)):
     payment.status = "CANCELED"
     db.commit()
     
-    return {"message": "Payment canceled successfully"}
+    return Response(status_code=204)
 
 if __name__ == "__main__":
     import uvicorn
