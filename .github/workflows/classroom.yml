@@ -93,10 +93,11 @@ jobs:
       - name: Deploy to Railway
         run: |
           npm install -g @railway/cli
+          # Create railway.json for project linking
+          echo '{"project": "5203a8c8-c3fd-4730-8d5c-a0286758b719"}' > railway.json
           railway up --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: 5203a8c8-c3fd-4730-8d5c-a0286758b719
 
       - name: Wait for deployment
         run: |
