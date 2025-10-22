@@ -79,3 +79,40 @@ jobs:
         if: always()
         continue-on-error: true
         run: docker compose down -v
+
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to Railway
+        run: |
+          npm install -g @railway/cli
+          railway login --token ${{ secrets.RAILWAY_TOKEN }}
+          railway up --detach
+
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for Railway deployment to complete..."
+          sleep 30
+
+      - name: Get Railway URL and Test
+        run: |
+          # Get Railway URL automatically
+          RAILWAY_URL=$(railway domain)
+          echo "Railway URL: $RAILWAY_URL"
+          
+          # Test health endpoint
+          echo "Testing health endpoint..."
+          curl -f "$RAILWAY_URL/manage/health" || exit 1
+          
+          # Test cars endpoint
+          echo "Testing cars endpoint..."
+          curl -f "$RAILWAY_URL/api/v1/cars?page=1&size=10&showAll=false" || exit 1
+          
+          echo "Deployment successful! Application is running at: $RAILWAY_URL"
