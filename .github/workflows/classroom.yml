@@ -96,16 +96,17 @@ jobs:
           railway up --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 5203a8c8-c3fd-4730-8d5c-a0286758b719
 
       - name: Wait for deployment
         run: |
           echo "Waiting for Railway deployment to complete..."
           sleep 30
 
-      - name: Get Railway URL and Test
+      - name: Test deployed application
         run: |
-          # Get Railway URL automatically
-          RAILWAY_URL=$(railway domain)
+          # Use the known Railway URL
+          RAILWAY_URL="https://lab3-template-production.up.railway.app"
           echo "Railway URL: $RAILWAY_URL"
           
           # Test health endpoint
