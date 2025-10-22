@@ -458,7 +458,7 @@ async def create_rental(rental_request: RentalRequest, username: str = Depends(g
             print(f"Gateway: Payment service error: {e}")
             return JSONResponse(
                 status_code=503,
-                content={"message": "Payment Service unavailable"}
+                content={"detail": {"message": "Payment Service unavailable"}}
             )
         
         # Step 4: Reserve car
