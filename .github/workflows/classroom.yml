@@ -95,19 +95,20 @@ jobs:
         with:
           node-version: '18'
       
-      - name: Authenticate Railway CLI
+      - name: Setup Railway CLI
         run: |
-          mkdir -p ~/.config
-          echo "{\"token\": \"${{ secrets.RAILWAY_TOKEN }}\"}" > ~/.config/railway.json
+          npm install -g @railway/cli@latest
+          mkdir -p ~/.config/railway
+          echo "${{ secrets.RAILWAY_TOKEN }}" > ~/.config/railway/token
       
       - name: Link Railway project
-        run: npx -y @railway/cli link --project 5203a8c8-c3fd-4730-8d5c-a0286758b719
+        run: railway link --project 5203a8c8-c3fd-4730-8d5c-a0286758b719
       
       - name: Set environment variables
-        run: npx -y @railway/cli variables --set "SERVICE_NAME=gateway" --set "PORT=8080"
+        run: railway variables --set "SERVICE_NAME=gateway" --set "PORT=8080"
       
       - name: Deploy to Railway
-        run: npx -y @railway/cli up --detach
+        run: railway up --detach
 
       - name: Wait for deployment
         run: |
