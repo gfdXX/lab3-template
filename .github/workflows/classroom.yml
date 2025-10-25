@@ -96,7 +96,12 @@ jobs:
           node-version: '18'
       
       - name: Link Railway project
-        run: npx -y @railway/cli link --project 5203a8c8-c3fd-4730-8d5c-a0286758b719
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "Error: RAILWAY_TOKEN is not set"
+            exit 1
+          fi
+          npx -y @railway/cli link --project 5203a8c8-c3fd-4730-8d5c-a0286758b719
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       
