@@ -95,25 +95,19 @@ jobs:
         with:
           node-version: '18'
       
-      - name: Link Railway project
+      - name: Authenticate Railway CLI
         run: |
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "Error: RAILWAY_TOKEN is not set"
-            exit 1
-          fi
-          npx -y @railway/cli link --project 5203a8c8-c3fd-4730-8d5c-a0286758b719
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          mkdir -p ~/.config
+          echo "{\"token\": \"${{ secrets.RAILWAY_TOKEN }}\"}" > ~/.config/railway.json
+      
+      - name: Link Railway project
+        run: npx -y @railway/cli link --project 5203a8c8-c3fd-4730-8d5c-a0286758b719
       
       - name: Set environment variables
         run: npx -y @railway/cli variables --set "SERVICE_NAME=gateway" --set "PORT=8080"
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       
       - name: Deploy to Railway
         run: npx -y @railway/cli up --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Wait for deployment
         run: |
