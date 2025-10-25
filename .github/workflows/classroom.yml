@@ -90,14 +90,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Railway CLI
+        uses: railway-app/setup-railway@v1
+        with:
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
+      
+      - name: Link Railway project
+        run: railway link --project 5203a8c8-c3fd-4730-8d5c-a0286758b719
+      
+      - name: Set environment variables
+        run: railway variables --set "SERVICE_NAME=gateway" --set "PORT=8080"
+      
       - name: Deploy to Railway
-        run: |
-          npm install -g @railway/cli
-          # Create railway.json for project linking
-          echo '{"project": "5203a8c8-c3fd-4730-8d5c-a0286758b719"}' > railway.json
-          railway up --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --detach
 
       - name: Wait for deployment
         run: |
