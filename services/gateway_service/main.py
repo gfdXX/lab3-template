@@ -38,45 +38,214 @@ class CircuitState(Enum):
     OPEN = "OPEN"          # Circuit is open, failing fast
     HALF_OPEN = "HALF_OPEN"  # Testing if service is back
 
+class SlidingWindow:
+    """
+    Sliding window для агрегации результатов вызовов.
+    Поддерживает count-based и time-based режимы.
+    """
+    def __init__(self, size=10, window_type="count"):
+        self.size = size  # Размер окна (количество вызовов или секунд)
+        self.window_type = window_type  # "count" или "time"
+        self.buckets = [{"failed": 0, "slow": 0, "total": 0} for _ in range(size)]
+        self.total_failed = 0
+        self.total_slow = 0
+        self.total_calls = 0
+        self.current_index = 0
+        self.lock = Lock()
+        
+        # Для time-based режима
+        if window_type == "time":
+            self.bucket_start_time = time.time()
+            self.start_time = time.time()
+    
+    def record_call(self, failed=False, slow=False):
+        """Записать результат вызова в окно"""
+        with self.lock:
+            if self.window_type == "count":
+                self._record_count_based(failed, slow)
+            else:  # time-based
+                self._record_time_based(failed, slow)
+    
+    def _record_count_based(self, failed, slow):
+        """Count-based: запись в текущий сегмент массива"""
+        current_bucket = self.buckets[self.current_index]
+        
+        # Уменьшаем общие счетчики при вытеснении
+        self.total_failed -= current_bucket["failed"]
+        self.total_slow -= current_bucket["slow"]
+        self.total_calls -= current_bucket["total"]
+        
+        # Обновляем текущий сегмент
+        current_bucket["total"] += 1
+        if failed:
+            current_bucket["failed"] += 1
+            self.total_failed += 1
+        if slow:
+            current_bucket["slow"] += 1
+            self.total_slow += 1
+        self.total_calls += 1
+        
+        # Переходим к следующему сегменту (циклический массив)
+        self.current_index = (self.current_index + 1) % self.size
+    
+    def _record_time_based(self, failed, slow):
+        """Time-based: запись с учетом времени"""
+        current_time = time.time()
+        
+        # Если прошла секунда, обновляем индекс
+        if current_time - self.bucket_start_time >= 1.0:
+            # Вычисляем сколько секунд прошло
+            seconds_elapsed = int(current_time - self.bucket_start_time)
+            
+            # Перемещаемся на нужное количество сегментов вперед
+            for _ in range(seconds_elapsed):
+                old_bucket = self.buckets[self.current_index]
+                
+                # Вычитаем старые агрегаты
+                self.total_failed -= old_bucket["failed"]
+                self.total_slow -= old_bucket["slow"]
+                self.total_calls -= old_bucket["total"]
+                
+                # Сбрасываем сегмент
+                old_bucket["failed"] = 0
+                old_bucket["slow"] = 0
+                old_bucket["total"] = 0
+                
+                # Переходим к следующему сегменту
+                self.current_index = (self.current_index + 1) % self.size
+            
+            self.bucket_start_time = current_time
+        
+        # Записываем в текущий сегмент
+        current_bucket = self.buckets[self.current_index]
+        current_bucket["total"] += 1
+        if failed:
+            current_bucket["failed"] += 1
+            self.total_failed += 1
+        if slow:
+            current_bucket["slow"] += 1
+            self.total_slow += 1
+        self.total_calls += 1
+    
+    def get_failure_rate(self):
+        """Получить процент неудачных вызовов"""
+        with self.lock:
+            if self.total_calls == 0:
+                return 0.0
+            return self.total_failed / self.total_calls
+    
+    def get_total_calls(self):
+        """Получить общее количество вызовов в окне"""
+        with self.lock:
+            return self.total_calls
+
 class CircuitBreaker:
-    def __init__(self, failure_threshold=5, timeout=60):
-        self.failure_threshold = failure_threshold
+    def __init__(self, failure_threshold=5, timeout=60, window_size=10, window_type="count"):
+        """
+        failure_threshold: порог сбоев для перехода в OPEN
+        timeout: время в OPEN перед переходом в HALF_OPEN
+        window_size: размер скользящего окна
+        window_type: "count" (последние N вызовов) или "time" (вызовы за последние N секунд)
+        """
+        self.failure_threshold = failure_threshold  # Порог в виде процента или абсолютного значения
         self.timeout = timeout
-        self.failure_count = 0
         self.last_failure_time = None
         self.state = CircuitState.CLOSED
         self.lock = Lock()
+        self.sliding_window = SlidingWindow(size=window_size, window_type=window_type)
+        
+        # Для HALF_OPEN режима ограничиваем количество одновременных запросов
+        self.half_open_allowed = 0
+        self.half_open_max = 5  # Максимум запросов в HALF_OPEN
     
     def call(self, func, *args, **kwargs):
+        # Проверяем состояние без блокировки на время выполнения функции
         with self.lock:
             # Check if we should simulate failure for payment service
             if self == payment_circuit_breaker and PAYMENT_SERVICE_SIMULATE_FAILURE:
-                self.failure_count += 1
-                self.last_failure_time = time.time()
-                if self.failure_count >= self.failure_threshold:
+                self.sliding_window.record_call(failed=True)
+                
+                # Проверяем порог через sliding window
+                if self._should_open():
+                    self.last_failure_time = time.time()
                     self.state = CircuitState.OPEN
                 raise Exception("Payment service simulated failure")
             
+            # OPEN state: немедленно возвращаем ошибку (кроме истечения timeout)
             if self.state == CircuitState.OPEN:
                 if time.time() - self.last_failure_time > self.timeout:
                     self.state = CircuitState.HALF_OPEN
+                    self.half_open_allowed = 0
                 else:
                     raise Exception("Circuit breaker is OPEN")
             
-            try:
-                result = func(*args, **kwargs)
+            # HALF_OPEN state: разрешаем только ограниченное число запросов
+            if self.state == CircuitState.HALF_OPEN:
+                if self.half_open_allowed >= self.half_open_max:
+                    raise Exception("Circuit breaker is HALF_OPEN - too many requests")
+                self.half_open_allowed += 1
+        
+        # Выполняем функцию вне lock, чтобы не блокировать другие запросы
+        try:
+            start_time = time.time()
+            result = func(*args, **kwargs)
+            call_duration = time.time() - start_time
+            
+            # Записываем успешный вызов
+            is_slow = call_duration > 5.0  # Call считается медленным если >5 сек
+            self.sliding_window.record_call(failed=False, slow=is_slow)
+            
+            # При успехе в HALF_OPEN переходим в CLOSED
+            with self.lock:
                 if self.state == CircuitState.HALF_OPEN:
                     self.state = CircuitState.CLOSED
-                    self.failure_count = 0
-                return result
-            except Exception as e:
-                self.failure_count += 1
+                    self.half_open_allowed = 0
+            
+            return result
+        except Exception as e:
+            # Записываем неудачный вызов
+            self.sliding_window.record_call(failed=True, slow=False)
+            
+            with self.lock:
                 self.last_failure_time = time.time()
                 
-                if self.failure_count >= self.failure_threshold:
+                # Проверяем порог и переходим в OPEN при необходимости
+                if self._should_open():
                     self.state = CircuitState.OPEN
                 
-                raise e
+                # Если в HALF_OPEN получили ошибку - возвращаемся в OPEN
+                if self.state == CircuitState.HALF_OPEN:
+                    self.state = CircuitState.OPEN
+                    self.half_open_allowed = 0
+            
+            raise e
+    
+    def _should_open(self):
+        """Проверить, должен ли circuit breaker перейти в OPEN"""
+        total_calls = self.sliding_window.get_total_calls()
+        if total_calls == 0:
+            return False
+        
+        # Если это процентный порог (от 0 до 1)
+        if 0 < self.failure_threshold <= 1.0:
+            failure_rate = self.sliding_window.get_failure_rate()
+            return failure_rate >= self.failure_threshold
+        
+        # Если это абсолютный порог количества сбоев
+        failed_count = self.sliding_window.total_failed
+        return failed_count >= self.failure_threshold
+    
+    def get_stats(self):
+        """Получить статистику circuit breaker"""
+        with self.lock:
+            return {
+                "state": self.state.value,
+                "total_calls": self.sliding_window.total_calls,
+                "total_failed": self.sliding_window.total_failed,
+                "total_slow": self.sliding_window.total_slow,
+                "failure_rate": self.sliding_window.get_failure_rate(),
+                "half_open_allowed": self.half_open_allowed if self.state == CircuitState.HALF_OPEN else None
+            }
 
 # Circuit breakers for each service
 cars_circuit_breaker = CircuitBreaker(failure_threshold=3, timeout=30)
@@ -163,18 +332,38 @@ retry_queue = RetryQueue()
 @app.post("/manage/circuit-breaker/payment/force-open")
 async def force_open_payment_circuit_breaker():
     """Force payment circuit breaker to open state"""
-    payment_circuit_breaker.state = CircuitState.OPEN
-    payment_circuit_breaker.failure_count = payment_circuit_breaker.failure_threshold
-    payment_circuit_breaker.last_failure_time = time.time()
+    with payment_circuit_breaker.lock:
+        payment_circuit_breaker.state = CircuitState.OPEN
+        payment_circuit_breaker.last_failure_time = time.time()
     return {"status": "Payment circuit breaker forced to OPEN"}
 
 @app.post("/manage/circuit-breaker/payment/force-close")
 async def force_close_payment_circuit_breaker():
     """Force payment circuit breaker to closed state"""
-    payment_circuit_breaker.state = CircuitState.CLOSED
-    payment_circuit_breaker.failure_count = 0
-    payment_circuit_breaker.last_failure_time = None
+    with payment_circuit_breaker.lock:
+        payment_circuit_breaker.state = CircuitState.CLOSED
+        payment_circuit_breaker.last_failure_time = None
+        # Очищаем sliding window
+        payment_circuit_breaker.sliding_window.buckets = [{"failed": 0, "slow": 0, "total": 0} for _ in range(payment_circuit_breaker.sliding_window.size)]
+        payment_circuit_breaker.sliding_window.total_failed = 0
+        payment_circuit_breaker.sliding_window.total_slow = 0
+        payment_circuit_breaker.sliding_window.total_calls = 0
     return {"status": "Payment circuit breaker forced to CLOSED"}
+
+@app.get("/manage/circuit-breaker/payment/stats")
+async def get_payment_circuit_breaker_stats():
+    """Get payment circuit breaker statistics"""
+    return payment_circuit_breaker.get_stats()
+
+@app.get("/manage/circuit-breaker/cars/stats")
+async def get_cars_circuit_breaker_stats():
+    """Get cars circuit breaker statistics"""
+    return cars_circuit_breaker.get_stats()
+
+@app.get("/manage/circuit-breaker/rental/stats")
+async def get_rental_circuit_breaker_stats():
+    """Get rental circuit breaker statistics"""
+    return rental_circuit_breaker.get_stats()
 
 @app.post("/manage/failover/payment/enable")
 async def enable_payment_failover():
