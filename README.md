@@ -5,13 +5,11 @@
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 
 Лабораторная работа №3 по курсу «Распределённые системы обработки информации», МГТУ им. Н.Э. Баумана (осень 2025).
-
-> **Код решения — в ветке [`test`](https://github.com/gfdXX/lab3-template/tree/test).**
-> В `master` лежит исходный шаблон курса, условие задания — в [ASSIGNMENT.md](ASSIGNMENT.md).
+Условие задания — в [ASSIGNMENT.md](ASSIGNMENT.md).
 
 ## Что сделано
 
-Сервис аренды автомобилей из [ЛР2](https://github.com/gfdXX/lab2-template) (Gateway, Cars, Rental, Payment) дополнен механизмами отказоустойчивости в Gateway (`services/gateway_service/main.py`):
+Сервис аренды автомобилей из [ЛР2](https://github.com/gfdXX/lab2-template) (Gateway, Cars, Rental, Payment) дополнен механизмами отказоустойчивости в Gateway ([`services/gateway_service/main.py`](services/gateway_service/main.py)):
 
 - **Circuit Breaker** для каждого сервиса: состояния CLOSED → OPEN → HALF_OPEN, статистика сбоев в скользящем окне, после 3 ошибок запросы сразу получают fallback, через 30 секунд пробный запрос проверяет, ожил ли сервис;
 - **деградация функциональности**: если недоступен вспомогательный сервис, Gateway отдаёт данные без его части; если недоступен обязательный — понятную ошибку `503 … unavailable`;
@@ -21,7 +19,7 @@
 ## Запуск
 
 ```bash
-git clone -b test https://github.com/gfdXX/lab3-template.git
+git clone https://github.com/gfdXX/lab3-template.git
 cd lab3-template
 docker compose up --build        # Gateway на http://localhost:8080
 ```
