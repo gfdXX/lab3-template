@@ -1,72 +1,31 @@
-# Лабораторная работа #3
+# РСОИ, ЛР3: отказоустойчивость микросервисов
 
-![GitHub Classroom Workflow](../../workflows/GitHub%20Classroom%20Workflow/badge.svg?branch=master)
+![Python](https://img.shields.io/badge/Python-FastAPI-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy-4169E1?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 
-## Fault Tolerance
+Лабораторная работа №3 по курсу «Распределённые системы обработки информации», МГТУ им. Н.Э. Баумана (осень 2025).
 
-### Формулировка
+> **Код решения — в ветке [`test`](https://github.com/gfdXX/lab3-template/tree/test).**
+> В `master` лежит исходный шаблон курса, условие задания — в [ASSIGNMENT.md](ASSIGNMENT.md).
 
-На базе [Лабораторной работы #2](https://github.com/bmstu-rsoi/lab2-template) реализовать механизмы, увеличивающие
-отказоустойчивость системы.
+## Что сделано
 
-### Требования
+Сервис аренды автомобилей из [ЛР2](https://github.com/gfdXX/lab2-template) (Gateway, Cars, Rental, Payment) дополнен механизмами отказоустойчивости в Gateway (`services/gateway_service/main.py`):
 
-1. На Gateway Service для _всех операций_ чтения реализовать паттерн Circuit Breaker. Накапливать статистику в памяти, и
-   если система не ответила N раз, то в N + 1 раз вместо запроса сразу отдавать fallback. Через небольшой timeout
-   выполнить запрос к реальной системе, чтобы проверить ее состояние.
-2. На каждом сервисе сделать специальный endpoint `GET /manage/health`, отдающий 200 ОК, он будет использоваться для
-   проверки доступности сервиса (в [Github Actions](.github/workflows/classroom.yml) в скрипте проверки готовности всех
-   сервисов [wait-script.sh](scripts/wait-script.sh) и в тестах [test-script.sh](scripts/test-script.sh)).
-   ```shell
-   "$path"/wait-for.sh -t 120 "http://localhost:$port/manage/health" -- echo "Host localhost:$port is active"
-   ```
-4. В случае недоступности данных из некритичного источника (не основного), возвращается fallback-ответ. В зависимости от
-   ситуации, это может быть:
-    * пустой объект или массив;
-    * объект, с заполненным полем (`uid` или подобным), по которому идет связь с другой системой;
-    * default строка (если при этом не меняется тип переменной).
-5. В задании описаны две операции, изменяющие состояния нескольких систем. В случае недоступности одной из систем,
-   участвующих в этой операции, выполнить:
-    1. откат всей операции;
-    2. возвращать пользователю ответ об успешном завершении операции, а на Gateway Service поставить этот запрос в
-       очередь для повторного выполнения.
-6. Для автоматических прогонов тестов в файле [autograding.json](.github/classroom/autograding.json)
-   и [classroom.yml](.github/workflows/classroom.yml) заменить `<variant>` на ваш вариант.
-7. В [docker-compose.yml](docker-compose.yml) прописать сборку и запуск docker контейнеров.
-8. Код хранить на Github, для сборки использовать Github Actions.
-9. Каждый сервис должен быть завернут в docker.
-10. В classroom.yml дописать шаги на сборку, прогон unit-тестов.
+- **Circuit Breaker** для каждого сервиса: состояния CLOSED → OPEN → HALF_OPEN, статистика сбоев в скользящем окне, после 3 ошибок запросы сразу получают fallback, через 30 секунд пробный запрос проверяет, ожил ли сервис;
+- **деградация функциональности**: если недоступен вспомогательный сервис, Gateway отдаёт данные без его части; если недоступен обязательный — понятную ошибку `503 … unavailable`;
+- **очередь повторов**: если при отмене аренды Payment недоступен, запрос на отмену оплаты кладётся в очередь и повторяется в фоновом потоке, пока не пройдёт;
+- `GET /manage/health` на всех сервисах и служебные эндпоинты для тестов: принудительно открыть/закрыть breaker, посмотреть статистику.
 
-### Пояснения
+## Запуск
 
-1. Для локальной разработки можно использовать Postgres в docker.
-2. Схема взаимодействия сервисов остается как в [Лабораторной работы #2](https://github.com/bmstu-rsoi/lab2-template).
-3. Для реализации очереди можно использовать language native реализацию (например, BlockingQueue для Java), либо
-   какую-то готовую реализацию типа RabbitMQ, Redis, ZeroMQ и т.п. Крайне нежелательно использовать реляционную базу
-   данных как средство эмуляции очереди.
-4. Можно использовать внешнюю очередь или запускать ее в docker.
-5. Для проверки отказоустойчивости используется остановка и запуск контейнеров docker, это делает
-   скрипт [test-script.sh](scripts/test-script.sh). Скрипт нужно запускать из корня проекта, т.к. он обращается к папке
-   postman по вариантам.
-   ```shell
-   # запуск тестового сценария:
-   # * <variant> – номер варианта (v1 | v2 | v3 | v4 )
-   # * <service> – имя сервиса в Docker Compose
-   # * <port>    – порт, на котором запущен сервис
-   $ scripts/test-script.sh <variant> <service> <port>
-   ```
+```bash
+git clone -b test https://github.com/gfdXX/lab3-template.git
+cd lab3-template
+docker compose up --build        # Gateway на http://localhost:8080
+```
 
-### Прием задания
+## Автор
 
-1. При получении задания у вас создается fork этого репозитория для вашего пользователя.
-2. После того как все тесты успешно завершатся, в Github Classroom на Dashboard будет отмечено успешное выполнение
-   тестов.
-
-### Варианты заданий
-
-Распределение вариантов заданий аналогично [ЛР #2](https://github.com/bmstu-rsoi/lab2-template).
-
-1. [Flight Booking System](v1/README.md)
-2. [Hotels Booking System](v2/README.md)
-3. [Car Rental System](v3/README.md)
-4. [Library System](v4/README.md)
+Салженикин Даниил, МГТУ им. Н.Э. Баумана.
