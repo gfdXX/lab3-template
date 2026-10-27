@@ -43,7 +43,7 @@ class SlidingWindow:
     Sliding window для агрегации результатов вызовов.
     Поддерживает count-based и time-based режимы.
     """
-    def __init__(self, size=10, window_type="count"):
+    def __init__(self, size=10, window_type="time"):
         self.size = size  # Размер окна (количество вызовов или секунд)
         self.window_type = window_type  # "count" или "time"
         self.buckets = [{"failed": 0, "slow": 0, "total": 0} for _ in range(size)]
